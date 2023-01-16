@@ -1,4 +1,9 @@
-import { getGlobalStore, useConfig, useStore } from "@openmrs/esm-framework";
+import {
+  getGlobalStore,
+  useConfig,
+  useSession,
+  useStore,
+} from "@openmrs/esm-framework";
 import { Button } from "@carbon/react";
 import React, { useCallback, useContext, useEffect, useState } from "react";
 import PatientCard from "../patient-card/PatientCard";
@@ -17,6 +22,7 @@ const WorkflowNavigationButtons = () => {
   const {
     activeFormUuid,
     validateForNext,
+    submitForNext,
     patientUuids,
     activePatientUuid,
     workflowState,
@@ -34,7 +40,8 @@ const WorkflowNavigationButtons = () => {
 
   const handleClickNext = () => {
     if (workflowState === "EDIT_FORM") {
-      validateForNext();
+      //validateForNext();
+      submitForNext();
     }
   };
 
@@ -66,7 +73,7 @@ const WorkflowNavigationButtons = () => {
         open={completeModalOpen}
         setOpen={setCompleteModalOpen}
         context={context}
-        validateFirst={true}
+        validateFirst={false}
       />
     </>
   );
@@ -92,7 +99,15 @@ const GroupSessionWorkspace = () => {
     submitForComplete,
   } = useContext(GroupFormWorkflowContext);
 
-  const { saveVisit, success: visitSaveSuccess } = useStartVisit({
+  const { user, sessionLocation } = useSession();
+  const [encounter, setEncounter] = useState(null);
+  const [visit, setVisit] = useState(null);
+
+  const {
+    saveVisit,
+    updateEncounter,
+    success: visitSaveSuccess,
+  } = useStartVisit({
     showSuccessNotification: false,
     showErrorNotification: true,
   });
@@ -105,17 +120,18 @@ const GroupSessionWorkspace = () => {
   // handleOnValidate is a callback passed to the form engine.
   const handleOnValidate = useCallback(
     (valid) => {
-      if (valid && !activeVisitUuid) {
-        // make a visit
-        // we will not persist this state or update the reducer
-        const date = new Date(activeSessionMeta.sessionDate);
-        date.setHours(date.getHours() + 1);
-        saveVisit({
-          patientUuid: activePatientUuid,
-          startDatetime: activeSessionMeta.sessionDate,
-          stopDatetime: date.toISOString(),
-          visitType: groupVisitTypeUuid,
-        });
+      if (valid && !activeVisitUuid && !visit) {
+        // // make a visit
+        // // we will not persist this state or update the reducer
+        // const date = new Date(activeSessionMeta.sessionDate);
+        // date.setHours(date.getHours() + 1);
+        // saveVisit({
+        //   patientUuid: activePatientUuid,
+        //   startDatetime: activeSessionMeta.sessionDate,
+        //   stopDatetime: date.toISOString(),
+        //   visitType: groupVisitTypeUuid,
+        //   location: sessionLocation?.uuid,
+        // });
       } else if (valid && activeVisitUuid) {
         // there is already a visit for this form
         submitForNext();
@@ -128,12 +144,21 @@ const GroupSessionWorkspace = () => {
       saveVisit,
       activeVisitUuid,
       submitForNext,
+      visit,
     ]
   );
+
+  useEffect(() => {
+    if (encounter && visit) {
+      // Update encounter so that it belongs to the created visit
+      updateEncounter({ uuid: encounter.uuid, visit: visit.uuid });
+    }
+  }, [encounter, visit]);
 
   // 2. save the new visit uuid and start form submission
   useEffect(() => {
     if (visitSaveSuccess) {
+      setVisit(visitSaveSuccess.data);
       const visitUuid = visitSaveSuccess?.data?.uuid;
       if (!activeVisitUuid) {
         updateVisitUuid(visitUuid);
@@ -152,14 +177,27 @@ const GroupSessionWorkspace = () => {
     workflowState,
     activeVisitUuid,
     submitForComplete,
+    visit,
+    setVisit,
   ]);
 
   // 3. on form payload creation inject the activeVisitUuid
   const handleEncounterCreate = useCallback(
     (payload) => {
-      const obsTime = new Date(activeSessionMeta.sessionDate);
-      obsTime.setMinutes(obsTime.getMinutes() + 1);
+      payload.location = sessionLocation?.uuid;
+      // Create a visit with the same date as the encounter being saved
+      const visitStopDatetime = new Date(
+        activeSessionMeta.sessionDate
+      ).toISOString();
+      saveVisit({
+        patientUuid: activePatientUuid,
+        startDatetime: activeSessionMeta.sessionDate,
+        stopDatetime: activeSessionMeta.sessionDate,
+        visitType: groupVisitTypeUuid,
+        location: sessionLocation?.uuid,
+      });
 
+      const obsTime = new Date(activeSessionMeta.sessionDate);
       payload.obs.forEach((item, index) => {
         payload.obs[index] = {
           ...item,
@@ -173,10 +211,15 @@ const GroupSessionWorkspace = () => {
       Object.entries(groupSessionConcepts).forEach(([field, uuid]) => {
         payload.obs.push({ concept: uuid, value: activeSessionMeta?.[field] });
       });
-      payload.visit = activeVisitUuid;
       payload.encounterDatetime = obsTime.toISOString();
     },
-    [activeVisitUuid, activeSessionMeta, groupSessionConcepts]
+    [
+      activePatientUuid,
+      activeVisitUuid,
+      activeSessionMeta,
+      groupSessionConcepts,
+      groupVisitTypeUuid,
+    ]
   );
 
   // 4. Once form has been posted, save the new encounter uuid so we can edit it later
@@ -184,6 +227,7 @@ const GroupSessionWorkspace = () => {
     (encounter) => {
       if (encounter && encounter.uuid) {
         saveEncounter(encounter.uuid);
+        setEncounter(encounter);
       }
     },
     [saveEncounter]

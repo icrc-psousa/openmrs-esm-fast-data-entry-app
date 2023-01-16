@@ -14,12 +14,17 @@ import { useTranslation } from "react-i18next";
 import { ExtensionSlot, showToast } from "@openmrs/esm-framework";
 import styles from "./styles.scss";
 import GroupFormWorkflowContext from "../context/GroupFormWorkflowContext";
-import { usePostCohort } from "../hooks";
+import { useGetPatient, usePostCohort } from "../hooks";
 
 const MemExtension = React.memo(ExtensionSlot);
 
 const PatientRow = ({ patient, removePatient }) => {
   const { t } = useTranslation();
+  const patient2 = useGetPatient(patient.uuid);
+  const givenName = patient2?.name?.[0]?.given?.[0];
+  const familyName = patient2?.name?.[0]?.family;
+  const identifier = patient2?.identifier?.[0]?.value;
+
   return (
     <li key={patient.uuid} className={styles.patientRow}>
       <span>
@@ -34,7 +39,9 @@ const PatientRow = ({ patient, removePatient }) => {
           iconDescription={t("remove", "Remove")}
         />
       </span>
-      <span className={styles.patientName}>{patient?.display}</span>
+      <span className={styles.patientName}>
+        {patient?.display || identifier + " - " + givenName + " " + familyName}
+      </span>
     </li>
   );
 };
@@ -108,18 +115,26 @@ const NewGroupForm = (props) => {
   );
 };
 
-const AddGroupModal = () => {
+const AddGroupModal = (props) => {
+  const { patients } = props;
+  const { isCreate } = props;
+  const { groupName } = props;
+  const { cohortUuid } = props;
+  const { isOpen } = props;
+  const { handleCancel } = props;
+  const { onPostSubmit } = props;
+
   const { setGroup } = useContext(GroupFormWorkflowContext);
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [errors, setErrors] = useState({});
-  const [name, setName] = useState("");
-  const [patientList, setPatientList] = useState([]);
+  const [name, setName] = useState(groupName);
+  const [patientList, setPatientList] = useState(patients || []);
   const { post, result, isPosting, error } = usePostCohort();
 
-  const handleCancel = () => {
-    setOpen(false);
-  };
+  // const handleCancel = () => {
+  //   setOpen(false);
+  // };
 
   const removePatient = useCallback(
     (patientUuid: string) =>
@@ -174,9 +189,13 @@ const AddGroupModal = () => {
   const handleSubmit = () => {
     if (validate()) {
       post({
+        uuid: cohortUuid,
         name: name,
         cohortMembers: patientList.map((p) => ({ patient: p.uuid })),
       });
+      if (onPostSubmit) {
+        onPostSubmit();
+      }
     }
   };
 
@@ -215,43 +234,40 @@ const AddGroupModal = () => {
 
   return (
     <div className={styles.modal}>
-      <Button
-        onClick={() => setOpen(true)}
-        renderIcon={Add}
-        iconDescription="Add"
-      >
-        {t("createNewGroup", "Create New Group")}
-      </Button>
-      <ComposedModal open={open} onClose={() => setOpen(false)}>
-        <ModalHeader>{t("createNewGroup", "Create New Group")}</ModalHeader>
+      {/*<Button*/}
+      {/*  onClick={() => setOpen(true)}*/}
+      {/*  renderIcon={isCreate ? Add : ""}*/}
+      {/*  iconDescription="Add"*/}
+      {/*>*/}
+      {/*  {isCreate*/}
+      {/*    ? t("createNewGroup", "Create New Group")*/}
+      {/*    : t("editGroup", "Edit Group")}*/}
+      {/*</Button>*/}
+      <ComposedModal open={isOpen} onClose={() => setOpen(false)}>
+        <ModalHeader>
+          {isCreate
+            ? t("createNewGroup", "Create New Group")
+            : t("editGroup", "Edit Group")}
+        </ModalHeader>
         <ModalBody>
-          {result ? (
-            <p>Group saved succesfully</p>
-          ) : isPosting ? (
-            <div className={styles.loading}>
-              <Loading withOverlay={false} />
-              <span>Saving new group...</span>
-            </div>
-          ) : (
-            <NewGroupForm
-              {...{
-                name,
-                setName,
-                patientList,
-                updatePatientList,
-                errors,
-                validate,
-                removePatient,
-              }}
-            />
-          )}
+          <NewGroupForm
+            {...{
+              name,
+              setName,
+              patientList,
+              updatePatientList,
+              errors,
+              validate,
+              removePatient,
+            }}
+          />
         </ModalBody>
         <ModalFooter>
-          <Button kind="secondary" onClick={handleCancel} disabled={isPosting}>
+          <Button kind="secondary" onClick={handleCancel}>
             {t("cancel", "Cancel")}
           </Button>
-          <Button kind="primary" onClick={handleSubmit} disabled={isPosting}>
-            {t("createGroup", "Create Group")}
+          <Button kind="primary" onClick={handleSubmit}>
+            {isCreate ? t("createGroup", "Create Group") : t("save", "Save")}
           </Button>
         </ModalFooter>
       </ComposedModal>

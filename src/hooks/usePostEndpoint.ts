@@ -31,7 +31,13 @@ const usePostEndpoint = ({ endpointUrl }) => {
   const post = useCallback(
     async (data) => {
       setSubmissionInProgress(true);
-      return openmrsFetch(endpointUrl, {
+
+      let path = endpointUrl;
+      if (data.uuid) {
+        path += "/" + data.uuid;
+      }
+
+      return openmrsFetch(path, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -39,7 +45,16 @@ const usePostEndpoint = ({ endpointUrl }) => {
         body: data,
       })
         .then(onFormPosted)
-        .catch(onError);
+        .catch(function () {
+          setResult(null);
+          return openmrsFetch(path, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: data,
+          });
+        });
     },
     [endpointUrl, onError, onFormPosted]
   );

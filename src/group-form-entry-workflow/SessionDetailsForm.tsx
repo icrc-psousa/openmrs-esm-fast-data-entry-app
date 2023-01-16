@@ -83,7 +83,7 @@ const SessionDetailsForm = () => {
                 id="text"
                 type="text"
                 labelText={t("sessionNotes", "Session Notes")}
-                {...register("sessionNotes", { required: true })}
+                {...register("sessionNotes")}
                 invalid={errors.sessionNotes}
                 invalidText={"This field is required"}
               />
